@@ -1,52 +1,75 @@
-import requests
+import anthropic
+from config import ANTHROPIC_API_KEY
 
-FLOWISE_MEMORY_URL = "http://localhost:3001/api/v1/prediction/291a36f1-2421-492c-ad35-44cdc0eb2f6b"
-FLOWISE_NUTRITION_URL = "http://localhost:3001/api/v1/prediction/1491add0-942d-48dd-866a-cfc2eb503c69"
-FLOWISE_LIFE_OS_URL = "http://localhost:3001/api/v1/prediction/18ec3890-30ab-43d6-9820-b9bb84537f55"
-FLOWISE_DAILY_BRIEFING_URL = "http://localhost:3001/api/v1/prediction/09e72e19-52d5-46e7-a1e7-8e068e51e74f"
+_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 def get_flowise_memory(user_message: str) -> str:
-    try:
-        context_query = f"Based on our conversation history, what do you remember that is relevant to this: {user_message}"
-        response = requests.post(FLOWISE_MEMORY_URL, json={"question": context_query})
-        data = response.json()
-        memory = data.get("text", "")
-        if memory:
-            return f"\n\nFlowise Memory Context:\n{memory}"
-        return ""
-    except Exception as e:
-        return ""
+    return ""
 
 def query_nutrition_architect(message: str, image_data: str = None, image_media_type: str = None) -> str:
     try:
-        payload = {"question": message}
+        content = []
         if image_data and image_media_type:
-            payload["uploads"] = [
-                {
-                    "data": f"data:{image_media_type};base64,{image_data}",
-                    "type": "file",
-                    "name": "image",
-                    "mime": image_media_type
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": image_media_type,
+                    "data": image_data
                 }
-            ]
-        response = requests.post(FLOWISE_NUTRITION_URL, json=payload)
-        data = response.json()
-        return data.get("text", "Sorry, I couldn't get a response from the Nutrition Architect.")
+            })
+        content.append({"type": "text", "text": message})
+
+        with _client.messages.stream(
+            model="claude-opus-4-6",
+            max_tokens=64000,
+            system=(
+                "You are an expert nutritionist and meal planner with deep knowledge of "
+                "macronutrients, micronutrients, dietary patterns, and evidence-based nutrition science. "
+                "When given images of food, fridges, or ingredients, analyse their nutritional content and "
+                "suggest healthy, balanced meal ideas. Provide specific, actionable guidance tailored to "
+                "the user's goals. Include calorie estimates, macros, and practical tips where relevant."
+            ),
+            messages=[{"role": "user", "content": content}]
+        ) as stream:
+            return stream.get_final_message().content[0].text
     except Exception as e:
         return f"Nutrition Architect error: {str(e)}"
 
 def query_life_os(message: str) -> str:
     try:
-        response = requests.post(FLOWISE_LIFE_OS_URL, json={"question": message})
-        data = response.json()
-        return data.get("text", "Sorry, I couldn't get a response from the Life OS.")
+        with _client.messages.stream(
+            model="claude-opus-4-6",
+            max_tokens=64000,
+            system=(
+                "You are an executive life assistant and personal operating system. You help the user "
+                "with productivity systems, goal setting, habit tracking, time management, and life planning. "
+                "You think strategically and help break down big goals into actionable steps. "
+                "You are direct, motivating, and practical — like a world-class executive coach combined "
+                "with a highly organised personal assistant. Help the user design and run their ideal life."
+            ),
+            messages=[{"role": "user", "content": message}]
+        ) as stream:
+            return stream.get_final_message().content[0].text
     except Exception as e:
         return f"Life OS error: {str(e)}"
 
 def query_daily_briefing(message: str) -> str:
     try:
-        response = requests.post(FLOWISE_DAILY_BRIEFING_URL, json={"question": message})
-        data = response.json()
-        return data.get("text", "Sorry, I couldn't get a response from the Daily Briefing.")
+        with _client.messages.stream(
+            model="claude-opus-4-6",
+            max_tokens=64000,
+            system=(
+                "You are a daily briefing assistant. Your job is to help the user start their day with "
+                "clarity and intention. When given context about the day ahead, produce a concise, "
+                "structured briefing covering: key priorities and tasks, important reminders, and a "
+                "motivating thought or intention for the day. "
+                "Format the briefing clearly with sections. Be crisp and actionable — this is a morning "
+                "briefing, not an essay. Weather, crypto, and stock data are provided separately by the "
+                "system, so focus on schedule, tasks, and mindset."
+            ),
+            messages=[{"role": "user", "content": message}]
+        ) as stream:
+            return stream.get_final_message().content[0].text
     except Exception as e:
         return f"Daily Briefing error: {str(e)}"
