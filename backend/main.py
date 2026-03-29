@@ -25,9 +25,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SECRET_USERNAME = "Callumc.user"
-SECRET_PASSWORD = "Polarbear_24"
-SECRET_TOKEN = "ruby-secret-token-2026"
+SECRET_USERNAME = os.getenv("RUBY_USERNAME", "")
+SECRET_PASSWORD = os.getenv("RUBY_PASSWORD", "")
+SECRET_TOKEN = os.getenv("RUBY_SECRET_TOKEN", "")
 
 class LoginRequest(BaseModel):
     username: str
