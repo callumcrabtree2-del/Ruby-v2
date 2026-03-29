@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from agent import chat
 from flowise import get_flowise_memory, query_nutrition_architect, query_life_os, query_daily_briefing
+import anthropic
+from config import ANTHROPIC_API_KEY
 
 load_dotenv()
 
@@ -45,6 +47,11 @@ class NutritionRequest(BaseModel):
 
 class LifeOSRequest(BaseModel):
     message: str
+
+class ContractRequest(BaseModel):
+    document_text: str
+    filename: Optional[str] = None
+    question: Optional[str] = None
 
 @app.get("/")
 def root():
@@ -192,6 +199,43 @@ async def calendar_today_endpoint():
     except Exception:
         return []
 
+
+@app.post("/api/contract")
+async def contract_endpoint(req: ContractRequest):
+    try:
+        _contract_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        if req.question:
+            user_message = f"Question: {req.question}\n\nContract document:\n{req.document_text}"
+        else:
+            user_message = f"Please provide a full analysis of the following contract document:\n\n{req.document_text}"
+
+        if req.filename:
+            user_message = f"Filename: {req.filename}\n\n{user_message}"
+
+        with _contract_client.messages.stream(
+            model="claude-opus-4-6",
+            max_tokens=8192,
+            system=(
+                "You are an expert contract lawyer and legal analyst with decades of experience "
+                "reviewing commercial, employment, real estate, and general legal agreements. "
+                "You provide clear, accurate, and thorough analysis of contracts and legal documents. "
+                "When asked a specific question, answer it directly and precisely with reference to the "
+                "relevant clauses. When performing a full analysis (no specific question), structure your "
+                "response with the following sections:\n\n"
+                "1. **Key Parties** — Identify all parties and their roles\n"
+                "2. **Core Obligations** — What each party must do\n"
+                "3. **Important Dates & Deadlines** — Any time-sensitive provisions\n"
+                "4. **Risks & Red Flags** — Unfair terms, unusual clauses, or areas of concern\n"
+                "5. **Termination Clauses** — How and when the agreement can be ended\n"
+                "6. **Plain English Summary** — A concise, jargon-free overview of the whole document\n\n"
+                "Be direct and practical. Flag anything the reader should pay close attention to before signing."
+            ),
+            messages=[{"role": "user", "content": user_message}]
+        ) as stream:
+            response = stream.get_final_message().content[0].text
+        return {"response": response}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/api/weather")
 async def weather_endpoint():
