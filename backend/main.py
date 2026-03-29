@@ -2,7 +2,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+import os
+import json
 import requests
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from agent import chat
 from flowise import get_flowise_memory, query_nutrition_architect, query_life_os, query_daily_briefing
@@ -128,6 +131,59 @@ async def stocks_endpoint():
         return stocks
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/api/calendar/today")
+async def calendar_today_endpoint():
+    try:
+        creds = None
+        sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+        token_json = os.getenv("GOOGLE_CALENDAR_TOKEN_JSON")
+
+        if sa_json:
+            from google.oauth2 import service_account
+            info = json.loads(sa_json)
+            creds = service_account.Credentials.from_service_account_info(
+                info,
+                scopes=["https://www.googleapis.com/auth/calendar.readonly"],
+            )
+        elif token_json:
+            from google.oauth2.credentials import Credentials
+            creds = Credentials.from_authorized_user_info(json.loads(token_json))
+        else:
+            return []
+
+        from googleapiclient.discovery import build
+        service = build("calendar", "v3", credentials=creds)
+
+        calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+        now = datetime.now(timezone.utc)
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        day_end = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
+
+        result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=day_start,
+            timeMax=day_end,
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=20,
+        ).execute()
+
+        events = []
+        for item in result.get("items", []):
+            start_raw = item["start"].get("dateTime") or (item["start"].get("date", "") + "T00:00:00Z")
+            end_raw = item["end"].get("dateTime") or (item["end"].get("date", "") + "T23:59:59Z")
+            events.append({
+                "id": item["id"],
+                "title": item.get("summary", "(No title)"),
+                "start": start_raw,
+                "end": end_raw,
+            })
+
+        return events
+    except Exception:
+        return []
+
 
 @app.get("/api/weather")
 async def weather_endpoint():

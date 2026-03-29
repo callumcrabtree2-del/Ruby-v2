@@ -1,4 +1,7 @@
 aiohappyeyeballs==2.6.1
+google-api-python-client
+google-auth
+google-auth-httplib2
 aiohttp==3.13.3
 aiosignal==1.4.0
 annotated-doc==0.0.4
