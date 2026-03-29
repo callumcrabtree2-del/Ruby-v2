@@ -156,9 +156,11 @@ async def calendar_today_endpoint():
         service = build("calendar", "v3", credentials=creds)
 
         calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
-        now = datetime.now(timezone.utc)
-        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-        day_end = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
+        from zoneinfo import ZoneInfo
+        melb_tz = ZoneInfo("Australia/Melbourne")
+        now_melb = datetime.now(melb_tz)
+        day_start = now_melb.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        day_end = now_melb.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
 
         result = service.events().list(
             calendarId=calendar_id,
