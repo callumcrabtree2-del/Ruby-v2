@@ -148,7 +148,13 @@ async def calendar_today_endpoint():
             )
         elif token_json:
             from google.oauth2.credentials import Credentials
+            import google.auth.transport.requests
             creds = Credentials.from_authorized_user_info(json.loads(token_json))
+            if creds.expired or not creds.valid:
+                try:
+                    creds.refresh(google.auth.transport.requests.Request())
+                except Exception:
+                    return []
         else:
             return []
 
