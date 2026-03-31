@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 import os
@@ -52,6 +53,9 @@ class ContractRequest(BaseModel):
     document_text: str
     filename: Optional[str] = None
     question: Optional[str] = None
+
+class TTSRequest(BaseModel):
+    text: str
 
 @app.get("/")
 def root():
@@ -236,6 +240,38 @@ async def contract_endpoint(req: ContractRequest):
         return {"response": response}
     except Exception as e:
         return {"error": str(e)}
+
+@app.post("/api/tts")
+async def tts_endpoint(req: TTSRequest):
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    voice_id = os.getenv("ELEVENLABS_VOICE_ID")
+    if not api_key or not voice_id:
+        raise HTTPException(status_code=500, detail="ElevenLabs credentials not configured")
+
+    response = requests.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+        headers={
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+        },
+        json={
+            "text": req.text,
+            "model_id": "eleven_turbo_v2",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75,
+                "style": 0.3,
+            },
+        },
+        stream=True,
+        timeout=30,
+    )
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail=f"ElevenLabs error: {response.text}")
+
+    return StreamingResponse(response.iter_content(chunk_size=4096), media_type="audio/mpeg")
+
 
 @app.get("/api/weather")
 async def weather_endpoint():
