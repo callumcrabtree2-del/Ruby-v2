@@ -70,3 +70,5 @@ uvicorn==0.42.0
 xxhash==3.6.0
 yarl==1.23.0
 zstandard==0.25.0
+alembic==1.18.4
+psycopg2-binary==2.9.11
