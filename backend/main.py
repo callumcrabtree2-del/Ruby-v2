@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -12,10 +12,13 @@ from agent import chat
 from flowise import get_flowise_memory, query_nutrition_architect, query_life_os, query_daily_briefing
 import anthropic
 from config import ANTHROPIC_API_KEY
+from database import get_db, HabitEntry, JournalEntry, Transaction, create_tables
+from sqlalchemy.orm import Session
 
 load_dotenv()
 
 app = FastAPI()
+create_tables()
 
 app.add_middleware(
     CORSMiddleware,
@@ -203,7 +206,6 @@ async def calendar_today_endpoint():
     except Exception:
         return []
 
-
 @app.post("/api/contract")
 async def contract_endpoint(req: ContractRequest):
     try:
@@ -272,7 +274,6 @@ async def tts_endpoint(req: TTSRequest):
 
     return StreamingResponse(response.iter_content(chunk_size=4096), media_type="audio/mpeg")
 
-
 @app.get("/api/weather")
 async def weather_endpoint():
     try:
@@ -290,3 +291,57 @@ async def weather_endpoint():
         }
     except Exception as e:
         return {"error": str(e)}
+
+# ─── HABITS ───────────────────────────────────────────────
+@app.get("/api/habits")
+async def get_habits(db: Session = Depends(get_db)):
+    return db.query(HabitEntry).all()
+
+@app.post("/api/habits")
+async def create_habit(name: str, date: str, db: Session = Depends(get_db)):
+    habit = HabitEntry(name=name, date=date)
+    db.add(habit)
+    db.commit()
+    db.refresh(habit)
+    return habit
+
+@app.put("/api/habits/{habit_id}")
+async def toggle_habit(habit_id: int, db: Session = Depends(get_db)):
+    habit = db.query(HabitEntry).filter(HabitEntry.id == habit_id).first()
+    if not habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+    habit.completed = not habit.completed
+    db.commit()
+    return habit
+
+# ─── JOURNAL ──────────────────────────────────────────────
+@app.get("/api/journal")
+async def get_journal(db: Session = Depends(get_db)):
+    return db.query(JournalEntry).order_by(JournalEntry.created_at.desc()).all()
+
+@app.post("/api/journal")
+async def create_journal(content: str, mood: str = None, db: Session = Depends(get_db)):
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    reflection = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=300,
+        messages=[{"role": "user", "content": f"You are Ruby, a warm personal AI assistant. Respond to this journal entry with a brief, caring reflection in 2-3 sentences:\n\n{content}"}]
+    ).content[0].text
+    entry = JournalEntry(content=content, mood=mood, ruby_reflection=reflection)
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+# ─── TRANSACTIONS ─────────────────────────────────────────
+@app.get("/api/transactions")
+async def get_transactions(db: Session = Depends(get_db)):
+    return db.query(Transaction).order_by(Transaction.created_at.desc()).all()
+
+@app.post("/api/transactions")
+async def create_transaction(description: str, amount: float, type: str, date: str, category: str = None, db: Session = Depends(get_db)):
+    transaction = Transaction(description=description, amount=amount, type=type, date=date, category=category)
+    db.add(transaction)
+    db.commit()
+    db.refresh(transaction)
+    return transaction
