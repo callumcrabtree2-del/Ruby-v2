@@ -60,6 +60,10 @@ class ContractRequest(BaseModel):
 class TTSRequest(BaseModel):
     text: str
 
+class JournalRequest(BaseModel):
+    content: str
+    mood: Optional[str] = None
+
 @app.get("/")
 def root():
     return {"status": "Ruby AI Backend is running"}
@@ -320,18 +324,31 @@ async def get_journal(db: Session = Depends(get_db)):
     return db.query(JournalEntry).order_by(JournalEntry.created_at.desc()).all()
 
 @app.post("/api/journal")
-async def create_journal(content: str, mood: str = None, db: Session = Depends(get_db)):
+async def create_journal(req: JournalRequest, db: Session = Depends(get_db)):
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     reflection = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=300,
-        messages=[{"role": "user", "content": f"You are Ruby, a warm personal AI assistant. Respond to this journal entry with a brief, caring reflection in 2-3 sentences:\n\n{content}"}]
+        messages=[{"role": "user", "content": f"You are Ruby, a warm personal AI assistant. Respond to this journal entry with a brief, caring reflection in 2-3 sentences:\n\n{req.content}"}]
     ).content[0].text
-    entry = JournalEntry(content=content, mood=mood, ruby_reflection=reflection)
+    entry = JournalEntry(content=req.content, mood=req.mood, ruby_reflection=reflection)
     db.add(entry)
     db.commit()
     db.refresh(entry)
     return entry
+
+@app.get("/api/journal/prompt")
+async def get_journal_prompt():
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        prompt = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=150,
+            messages=[{"role": "user", "content": "Generate one thoughtful, introspective journal writing prompt. Make it warm and specific. Return only the prompt text, no quotes or preamble."}]
+        ).content[0].text.strip()
+        return {"prompt": prompt}
+    except Exception as e:
+        return {"error": str(e)}
 
 # ─── TRANSACTIONS ─────────────────────────────────────────
 @app.get("/api/transactions")
